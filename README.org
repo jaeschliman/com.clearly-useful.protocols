@@ -1,0 +1,77 @@
+simple clojure-style protocols for common lisp
+
+see test.lisp for simple examples.
+
+* overview:
+  this system provides a simple implementation of protcols for common
+  lisp inspired by clojure. the interface to this package is
+  intentionally minimal and exports four symbols:
+
+** defprotocol
+   /macro/
+   defprotocol name [docstring] method-declaration+
+
+   example:
+   (defprotocol printable
+     "an object which can be printed my way"
+     (my-package::print-special (object stream) "print object to stream"))
+
+   this results in the following:
+     - definition of the generic function printable-p which tests whether an object
+       implements the protocol printable
+     - definition of the type printable, which satisfies printable-p
+       with the documentation "an object which can be printed my way"
+     - definition of the generic function my-package::print-special with the documentation
+       "print object to stream"
+       
+    note that the lambda list for a protocol method is restricted to
+    symbols, and may not contain &optional &key &allow-other-keys. this
+    is to simplify the validation of protocol definitions & implementations
+    at compile time, and may be changed in the future.
+
+    note also that methods defined with extend-type only specialize
+    on their first parameter, which is of the type implementing the protocol
+    (see below). this is in line with clojure's implementation, but may
+    not be neccessary for common lisp, as methods are more flexible.
+    a more complex style of definition & implementation of protocols may
+    be implemented in the future to take full advantage of generic function
+    dispatch, but the current simple implementation will continue to work.
+
+** extend-type
+   /macro/
+   extend-type class-name [protocol-name, method-definition+]+
+
+   example:
+   (extend-type string
+     foo
+     (bar (self other) (frob other self))
+     quux
+     (svelte (self) etc))
+
+   performs simple validation at compile time.
+     
+   this will result in method definitions for the generic functions
+   bar and svelte specialized on class string for the first parameter.
+   lambda-lists for method-definitions in extend-type may only contain
+   symbols, and do not support &optional &key &allow-other key. this
+   is a limitation of the current implementation that may change in
+   the future.
+
+** protocol-extends-class-p
+   /function/
+   protocol-extends-class-p protocol-name class-or-class-name
+   true if class-or-class-name has implemented the protcol
+   named by protocol-name
+
+** class-implements-protocol-p
+   /function/
+   class-implements-protocol-p class-or-class-name protocol-name
+   same as above.
+
+** notes
+   there is currently no way to undefine a protocol, as I don't know
+   of a portable way to undefine types in common lisp.
+
+   also, if you redefine a protocol in the current implementation, it
+   does not invalidate existing implementors of the protocol, which
+   would be helpful. This will be fixed.

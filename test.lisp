@@ -42,7 +42,7 @@
 
 ;; although extend-type provides simple error checking
 ;; at compile time, its definitions do not take effect
-;; until load.
+;; until execution.
 (defun sanity-check ()
   (assert (class-implements-protocol-p 'string 'greeter))
   (assert (protocol-extends-class-p 'greeter 'string))
@@ -50,7 +50,8 @@
   (assert (typep "hello" 'greeter))
   t)
 
-(sanity-check)
+(eval-when (:execute)
+  (sanity-check))
 
 ;;;types are composable
 (deftype impressive-individual ()

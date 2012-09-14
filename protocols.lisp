@@ -51,11 +51,12 @@
     `(progn
        (defmethod implements-protocol? ((object ,class)
 					(protocol (eql ,protocol)))
-	 (declare (ignore object protocol))
+	 (declare (ignorable object)
+		  (ignorable protocol))
 	 t)
        (defmethod implements-protocol? ((object (eql ,(find-class class)))
 					(protocol (eql ,protocol)))
-	 (declare (ignore object protocol))
+	 (declare (ignorable object protocol))
 	 t))))
 
 (defun transform-method (method type)

@@ -5,6 +5,8 @@
   :description "Simple protocol implementation for Common Lisp inspired by clojure."
 
   :author "Jason Aeschliman <j.aeschliman@gmail.com>"
+
+  :version "0.1"
   
   :license "revised BSD"
   :depends-on (:iterate)

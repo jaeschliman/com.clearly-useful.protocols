@@ -1,6 +1,8 @@
 simple clojure-style protocols for common lisp
 
-see test.lisp for simple examples.
+see test.lisp for simple (if somewhat silly) examples.
+real usage can be seen in the com.clearly-useful.generic-sequence-interface
+system.
 
 * overview:
   this system provides a simple implementation of protcols for common
@@ -9,33 +11,54 @@ see test.lisp for simple examples.
 
 ** defprotocol
    /macro/
-   defprotocol name [docstring] method-declaration+
+   defprotocol name [docstring] (option | method-declaration)+
+
+   where name is a symbol
+         docstring a docstring
+         option is one of:
+	   (:base-method ...)
+	   (:require protocol)
+	 method-declaration is
+	   a simple lambda list with
+	   an optional docstring (see below)
 
    example:
    (defprotocol printable
      "an object which can be printed my way"
+     (:base-method (object) (error "oops!"))
+     (:require stringable)
      (my-package::print-special (object stream) "print object to stream"))
 
    this results in the following:
-     - definition of the generic function printable-p which tests whether an object
-       implements the protocol printable
+     - definition of the generic function printable, which will
+       function as identity for any object implementing this
+       protocol. any object which does not implement this protocol
+       will raise the error "oops!"  had a :base-method not been
+       supplied, a generic not-implemented error would be raised by
+       objects not implementing the protocol.
+     - a requirement that any object implementing this protocol
+       already implement stringable
+     - definition of the generic function printable-p which tests
+       whether an object implements the protocol printable
      - definition of the type printable, which satisfies printable-p
        with the documentation "an object which can be printed my way"
-     - definition of the generic function my-package::print-special with the documentation
-       "print object to stream"
+     - definition of the generic function my-package::print-special
+       with the documentation "print object to stream"
        
     note that the lambda list for a protocol method is restricted to
-    symbols, and may not contain &optional &key &allow-other-keys. this
-    is to simplify the validation of protocol definitions & implementations
-    at compile time, and may be changed in the future.
+    symbols, and may not contain &optional &key
+    &allow-other-keys. this is to simplify the validation of protocol
+    definitions & implementations at compile time, and may be changed
+    in the future.
 
-    note also that methods defined with extend-type only specialize
-    on their first parameter, which is of the type implementing the protocol
-    (see below). this is in line with clojure's implementation, but may
-    not be neccessary for common lisp, as methods are more flexible.
-    a more complex style of definition & implementation of protocols may
-    be implemented in the future to take full advantage of generic function
-    dispatch, but the current simple implementation will continue to work.
+    note also that methods defined with extend-type only specialize on
+    their first parameter, which is of the type implementing the
+    protocol (see below). this is in line with clojure's
+    implementation, but may not be neccessary for common lisp, as
+    methods are more flexible.  a more complex style of definition &
+    implementation of protocols may be implemented in the future to
+    take full advantage of generic function dispatch, but the current
+    simple implementation will continue to work.
 
 ** extend-type
    /macro/
@@ -68,10 +91,14 @@ see test.lisp for simple examples.
    class-implements-protocol-p class-or-class-name protocol-name
    same as above.
 
-** notes
+** notes & todo's
    there is currently no way to undefine a protocol, as I don't know
    of a portable way to undefine types in common lisp.
 
-   also, if you redefine a protocol in the current implementation, it
-   does not invalidate existing implementors of the protocol, which
-   would be helpful. This will be fixed.
+   if you redefine a protocol in the current implementation, it does
+   not invalidate existing implementors of the protocol, which would
+   be helpful. This will be fixed.
+
+   error messages are less helpful than they could be at the moment.
+
+   add extend-protocol

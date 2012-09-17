@@ -85,3 +85,43 @@
  (defun xxyrz (a)
   (declare (type vector a))
   (wow-us a)))
+
+;;;test :require
+
+(defprotocol foo
+  (abc (o)))
+
+(defprotocol bar
+  (:require foo)
+  (def (o)))
+
+(extend-type string
+  foo
+  (abc (o) (reverse o))
+  bar
+  (def (o) (reverse (abc o))))
+
+(defprotocol baz
+  (:require bar)
+  (ghi (o)))
+
+(extend-type string
+  baz
+  (ghi (o) (concatenate 'string
+			(abc o)
+			(def o))))
+
+
+(defprotocol base-method-test
+  (:base-method (o) (list 'ok o))
+  (dummy (x)))
+
+
+(extend-type string
+  base-method-test
+  (dummy (x) x))
+
+(assert (equalp (base-method-test 'ok)
+		'(ok ok)))
+(assert (equalp (base-method-test "hello")
+		"hello"))

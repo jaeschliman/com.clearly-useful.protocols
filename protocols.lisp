@@ -5,6 +5,7 @@
 (defclass protocol ()
   ((name :accessor name :initarg :name)
    (methods :accessor methods :initform (list))
+   (properties :accessor properties :initform nil)
    (documentation :accessor protocol-documentation :initform nil)))
 
 (defmethod make-load-form ((p protocol) &optional env)
@@ -47,7 +48,8 @@
 	    '(satisfies ,(protocol-test-name name))))
 
 (defun protocol-register (name class)
-  (let ((protocol (ensure-protocol name)))
+  (let* ((protocol (ensure-protocol name))
+	 (requires (getf (properties protocol) :require)))
     `(progn
        (defmethod implements-protocol? ((object ,class)
 					(protocol (eql ,protocol)))
@@ -57,7 +59,10 @@
        (defmethod implements-protocol? ((object (eql ,(find-class class)))
 					(protocol (eql ,protocol)))
 	 (declare (ignorable object protocol))
-	 t))))
+	 t)
+       (dolist (required ',requires)
+	 (unless (class-implements-protocol-p ',class required)
+	   (error "protocol ~S requires protocol ~S be implemented" ',name required))))))
 
 (defun transform-method (method type)
   (list* 'defmethod
@@ -94,17 +99,31 @@
 	   (and documentation
 		`((:documentation ,documentation))))))
 
-(defun protocol-definition-defgeneric-forms (protocol-name methods)
+(defun protocol-definition-defgeneric-forms (protocol-name methods properties)
+  (declare (ignorable properties))
   (loop
      with name = protocol-name
      for method in methods
      collect (transform-method-to-defgeneric name method)))
 
-(defun protocol-definition (name methods)
+(defun protocol-definition-eponymous-generic (name properties)
+  (let ((base-method (getf properties :base-method))
+	(base-doc (or (getf properties :base-documentation)
+		      (format nil
+			      "convert an object to ~S protocol, or error."
+			      name))))
+    `(defgeneric ,name (object)
+       (:documentation ,base-doc)
+       ,@(when base-method
+	       (list `(:method ,@base-method))))))
+
+(defun protocol-definition (name methods properties)
   (let ((p (gensym)))
     `(let ((,p (ensure-protocol ',name)))
        (setf (methods ,p) ',methods)
-       ,@(protocol-definition-defgeneric-forms name methods)
+       (setf (properties ,p) ',properties)
+       ,(protocol-definition-eponymous-generic name properties)
+       ,@(protocol-definition-defgeneric-forms name methods properties)
        ,(protocol-test-function name)
        ,(protocol-deftype name))))
 
@@ -133,9 +152,13 @@
 	  (error "invalid method ~A for ~A implementation of protocol ~A"
 		 method type protocol-name))))))
 
+(defun protocol-implementation-base-method (name type)
+  `(defmethod ,name ((object ,type)) object))
+
 (defun protocol-implementation (name type methods)
   (validate-protocol-implementation-methods name type methods)
   `(progn ,@(method-implementations name type methods)
+	  ,(protocol-implementation-base-method name type)
 	  ,(protocol-register name type)))
 
 (defun validate-protocol-definition-methods (name methods)
@@ -151,13 +174,33 @@
 	    (error "malformed method declaration in protocol definition: ~A ~A" name method)))
     t))
 
+(defstruct protocol-body
+  properties ;;plist
+  methods )
+
+(defun parse-protocol-body (methods)
+  (let ((body (make-protocol-body
+	       :properties (list)
+	       :methods (list))))
+    (loop
+       for list in methods
+       for thing = (first list)
+       do (if (keywordp thing)
+	      (setf (getf (protocol-body-properties body) thing)
+		    (rest list))
+	      (push list (protocol-body-methods body))))
+    body))
+
 (defmacro defprotocol (name &body methods)
   (when (stringp (first methods))
     (setf (protocol-documentation (ensure-protocol name)) (first methods)
 	  methods (rest methods)))
-  (validate-protocol-definition-methods name methods)
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     ,(protocol-definition name methods)))
+  (let* ((body (parse-protocol-body methods))
+	 (methods (protocol-body-methods body))
+	 (properties (protocol-body-properties body)))
+    (validate-protocol-definition-methods name methods)
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       ,(protocol-definition name methods properties))))
 
 (defun partition-methods (list) ;;doesn't maintain order
   (iter (for i in list)

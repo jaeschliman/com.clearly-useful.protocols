@@ -51,18 +51,23 @@
   (let* ((protocol (ensure-protocol name))
 	 (requires (getf (properties protocol) :require)))
     `(progn
+       
        (defmethod implements-protocol? ((object ,class)
 					(protocol (eql ,protocol)))
 	 (declare (ignorable object)
-		  (ignorable protocol))
-	 t)
+		  (ignorable protocol))	 t)
        (defmethod implements-protocol? ((object (eql ,(find-class class)))
 					(protocol (eql ,protocol)))
-	 (declare (ignorable object protocol))
-	 t)
-       (dolist (required ',requires)
-	 (unless (class-implements-protocol-p ',class required)
-	   (error "protocol ~S requires protocol ~S be implemented" ',name required))))))
+	 (declare (ignorable object protocol)) 	 t)
+       
+       ,@(when
+	  requires
+	  (list
+	   `(dolist (required ',requires)
+	      (unless (class-implements-protocol-p ',class
+						   required)
+		(error "for class ~S: protocol ~S requires protocol ~S be implemented"
+		       ',class ',name required))))))))
 
 (defun transform-method (method type)
   (list* 'defmethod
@@ -202,14 +207,14 @@
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        ,(protocol-definition name methods properties))))
 
-(defun partition-methods (list) ;;doesn't maintain order
+(defun partition-methods (list)
   (iter (for i in list)
 	(when (and (atom i) group)
 	  (collect group into result)
 	  (setq group nil))
 	(collect i into group)
 	(finally
-	 (return (nreverse (cons group result))))))
+	 (return (append result (list group))))))
 
 (defmacro extend-type (class &body methods)
   `(progn

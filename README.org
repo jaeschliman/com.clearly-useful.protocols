@@ -99,6 +99,10 @@ system.
    not invalidate existing implementors of the protocol, which would
    be helpful. This will be fixed.
 
-   error messages are less helpful than they could be at the moment.
+*** TODO fix protocol redefinition  
 
-   add extend-protocol
+*** TODO add extend-protocol
+
+*** TODO error messages are less helpful than they could be at the moment. 
+
+*** TODO migrate to a proper test framework 

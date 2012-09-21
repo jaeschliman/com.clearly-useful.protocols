@@ -6,7 +6,9 @@
   ((name :accessor name :initarg :name)
    (methods :accessor methods :initform (list))
    (properties :accessor properties :initform nil)
-   (documentation :accessor protocol-documentation :initform nil)))
+   (documentation :accessor protocol-documentation :initform nil)
+   (includes-generic-pun :accessor protocol-includes-generic-pun :initform nil)
+   (includes-method-pun :accessor protocol-includes-method-pun :initform nil)))
 
 (defmethod make-load-form ((p protocol) &optional env)
   (declare (ignore env))
@@ -33,47 +35,75 @@
     (declare (ignore object))
     nil))
 
-(defun protocol-test-name (name)
-  (intern (concatenate 'string (symbol-name name)
-		       (load-time-value (symbol-name '-p)))))
+
+;;;utilities
 
-(defun protocol-test-function (name)
-  `(defun ,(protocol-test-name name) (object)
-     ,(format nil "test if object implements ~S" name)
-     (implements-protocol? object ,(ensure-protocol name))))
+(defun partition-methods (list)
+  (iter (for i in list)
+	(when (and (atom i) group)
+	  (collect group into result)
+	  (setq group nil))
+	(collect i into group)
+	(finally
+	 (return (append result (list group))))))
 
-(defun protocol-deftype (name)
-  `(deftype ,name () ,(protocol-documentation
-		       (ensure-protocol name))
-	    '(satisfies ,(protocol-test-name name))))
+(defstruct protocol-body
+  properties ;;plist
+  methods )
 
-(defun protocol-register (name class)
-  (let* ((protocol (ensure-protocol name))
-	 (requires (getf (properties protocol) :require)))
-    `(progn
-       
-       (defmethod implements-protocol? ((object ,class)
-					(protocol (eql ,protocol)))
-	 (declare (ignorable object)
-		  (ignorable protocol))	 t)
-       (defmethod implements-protocol? ((object (eql ,(find-class class)))
-					(protocol (eql ,protocol)))
-	 (declare (ignorable object protocol)) 	 t)
-       
-       ,@(when
-	  requires
-	  (list
-	   `(dolist (required ',requires)
-	      (unless (class-implements-protocol-p ',class
-						   required)
-		(error "for class ~S: protocol ~S requires protocol ~S be implemented"
-		       ',class ',name required))))))))
+(defun parse-protocol-body (methods)
+  (let ((body (make-protocol-body
+	       :properties (list)
+	       :methods (list))))
+    (loop
+       for list in methods
+       for thing = (first list)
+       do (if (keywordp thing)
+	      (setf (getf (protocol-body-properties body) thing)
+		    (rest list))
+	      (push list (protocol-body-methods body))))
+    body))
 
-(defun transform-method (method type)
-  (list* 'defmethod
-	 (car method)
-	 (cons (list (caadr method) type) (cdadr method))
-	 (cddr method)))
+
+
+;;;; validation
+(defun valid-protocol-method-name-p (thing)
+  (symbolp thing))
+
+(defun valid-protocol-lambda-list-p (params)
+  (and (consp params)
+       (every #'symbolp params)
+       (not (member '&key params))
+       (not (member '&optional params))
+       (not (member '&allow-other-keys params))))
+
+(defun validate-protocol-implementation-methods (protocol-name type methods)
+  (let* ((protocol (find-protocol protocol-name))
+	 (method-definitions (methods protocol)))
+    (dolist (method methods)
+      (let* ((name (first method))
+	     (params (second method))
+	     (def (find name method-definitions :key #'first)))
+	(unless (and def
+		     (valid-protocol-method-name-p name)
+		     (valid-protocol-lambda-list-p params)
+		     (= (length (second def))
+			(length params)))
+	  (error "invalid method ~A for ~A implementation of protocol ~A"
+		 method type protocol-name))))))
+
+(defun validate-protocol-definition-methods (name methods)
+  (flet ((ok (method) (let ((name (first method))
+			    (params (second method))
+			    (documentation (third method)))
+			(and (valid-protocol-method-name-p name)
+			     (valid-protocol-lambda-list-p params)
+			     (or (null documentation)
+				 (stringp documentation))))))
+    (iter (for method in methods)
+	  (unless (ok method)
+	    (error "malformed method declaration in protocol definition: ~A ~A" name method)))
+    t))
 
 (defun method-implementations (name type methods)
     (flet ((order (method-list)
@@ -90,6 +120,58 @@
 	  do (error
 	      "implementation ~A does not match ~A for type ~A in ~A"
 	      a b type name)))))
+
+;;definition code gen 
+
+
+(defun protocol-test-name (name)
+  (intern (concatenate 'string (symbol-name name)
+		       (load-time-value (symbol-name '-p)))))
+
+(defun protocol-test-function (name)
+  `(defun ,(protocol-test-name name) (object)
+     ,(format nil "test if object implements ~S" name)
+     (implements-protocol? object ,(ensure-protocol name))))
+
+(defun protocol-deftype (name)
+  `(deftype ,name () ,(protocol-documentation
+		       (ensure-protocol name))
+	    '(satisfies ,(protocol-test-name name))))
+
+
+;;implementation code gen
+
+(defun generate-implements? (class protocol)
+  `((defmethod implements-protocol? ((object ,class)
+				     (protocol (eql ,protocol)))
+      (declare (ignorable object)
+	       (ignorable protocol))	 t)
+    (defmethod implements-protocol? ((object (eql ,(find-class class)))
+				     (protocol (eql ,protocol)))
+      (declare (ignorable object protocol)) 	 t)))
+
+(defun generate-requires (requires class name)
+  (when requires
+    (list
+     `(dolist (required ',requires)
+	(unless (class-implements-protocol-p ',class required)
+	  (error "for class ~S: protocol ~S requires protocol ~S be implemented"
+		 ',class ',name required))))))
+
+(defun protocol-implementation-register (name class)
+  (let* ((protocol (ensure-protocol name))
+	 (requires (getf (properties protocol) :require)))
+    `(progn
+       ,@(generate-implements? class protocol)
+       ,@(generate-requires requires class name))))
+
+(defun transform-method (method type)
+  (list* 'defmethod
+	 (car method)
+	 (cons (list (caadr method) type) (cdadr method))
+	 (cddr method)))
+
+;;xx
 
 
 (defun transform-method-to-defgeneric (protocol-name method)
@@ -123,98 +205,65 @@
 	       (list `(:method ,@base-method))))))
 
 (defun protocol-definition (name methods properties)
-  (let ((p (gensym)))
-    `(let ((,p (ensure-protocol ',name)))
-       (setf (methods ,p) ',methods)
-       (setf (properties ,p) ',properties)
-       ,(protocol-definition-eponymous-generic name properties)
-       ,@(protocol-definition-defgeneric-forms name methods properties)
-       ,(protocol-test-function name)
-       ,(protocol-deftype name))))
+  (let ((protocol (ensure-protocol name)))
+    (let ((p (gensym)))
+      `(let ((,p (ensure-protocol ',name)))
+	 (setf (methods ,p) ',methods)
+	 (setf (properties ,p) ',properties)
+	 ,@(when (protocol-includes-generic-pun protocol)
+		 (list (protocol-definition-eponymous-generic name properties)))
+	 ,@(protocol-definition-defgeneric-forms name methods properties)
+	 ,(protocol-test-function name)
+	 ,(protocol-deftype name)))))
 
-(defun valid-protocol-method-name-p (thing)
-  (symbolp thing))
 
-(defun valid-protocol-lambda-list-p (params)
-  (and (consp params)
-       (every #'symbolp params)
-       (not (member '&key params))
-       (not (member '&optional params))
-       (not (member '&allow-other-keys params))))
-
-(defun validate-protocol-implementation-methods (protocol-name type methods)
-  (let* ((protocol (find-protocol protocol-name))
-	 (method-definitions (methods protocol)))
-    (dolist (method methods)
-      (let* ((name (first method))
-	     (params (second method))
-	     (def (find name method-definitions :key #'first)))
-	(unless (and def
-		     (valid-protocol-method-name-p name)
-		     (valid-protocol-lambda-list-p params)
-		     (= (length (second def))
-			(length params)))
-	  (error "invalid method ~A for ~A implementation of protocol ~A"
-		 method type protocol-name))))))
 
 (defun protocol-implementation-base-method (name type)
   `(defmethod ,name ((object ,type)) object))
 
 (defun protocol-implementation (name type methods)
+  "protocol name, implementation type name, method list"
   (validate-protocol-implementation-methods name type methods)
   `(progn ,@(method-implementations name type methods)
-	  ,(protocol-implementation-base-method name type)
-	  ,(protocol-register name type)))
+	  ,@(when (protocol-includes-method-pun (ensure-protocol name))
+		  (list (protocol-implementation-base-method name type)))
+	  ,(protocol-implementation-register name type)))
 
-(defun validate-protocol-definition-methods (name methods)
-  (flet ((ok (method) (let ((name (first method))
-			    (params (second method))
-			    (documentation (third method)))
-			(and (valid-protocol-method-name-p name)
-			     (valid-protocol-lambda-list-p params)
-			     (or (null documentation)
-				 (stringp documentation))))))
-    (iter (for method in methods)
-	  (unless (ok method)
-	    (error "malformed method declaration in protocol definition: ~A ~A" name method)))
-    t))
 
-(defstruct protocol-body
-  properties ;;plist
-  methods )
+
+;;;;interface
 
-(defun parse-protocol-body (methods)
-  (let ((body (make-protocol-body
-	       :properties (list)
-	       :methods (list))))
-    (loop
-       for list in methods
-       for thing = (first list)
-       do (if (keywordp thing)
-	      (setf (getf (protocol-body-properties body) thing)
-		    (rest list))
-	      (push list (protocol-body-methods body))))
-    body))
 
 (defmacro defprotocol (name &body methods)
-  (when (stringp (first methods))
-    (setf (protocol-documentation (ensure-protocol name)) (first methods)
-	  methods (rest methods)))
-  (let* ((body (parse-protocol-body methods))
-	 (methods (protocol-body-methods body))
-	 (properties (protocol-body-properties body)))
-    (validate-protocol-definition-methods name methods)
-    `(eval-when (:compile-toplevel :load-toplevel :execute)
-       ,(protocol-definition name methods properties))))
+  (let ((protocol (ensure-protocol name)))
+    (when (stringp (first methods))
+      (setf (protocol-documentation protocol) (first methods)
+	    methods (rest methods)))
+    (let* ((body (parse-protocol-body methods))
+	   (methods (protocol-body-methods body))
+	   (properties (protocol-body-properties body)))
+      ;;validate structure
+      (validate-protocol-definition-methods name methods)
 
-(defun partition-methods (list)
-  (iter (for i in list)
-	(when (and (atom i) group)
-	  (collect group into result)
-	  (setq group nil))
-	(collect i into group)
-	(finally
-	 (return (append result (list group))))))
+      (setf
+       ;;wether to generate punning methods
+       (protocol-includes-method-pun protocol)
+       (or (getf properties :eponymous-method)
+       )
+
+       ;; including methods implies including
+       ;; a generic
+       (protocol-includes-generic-pun protocol)
+       (or (getf properties :eponymous-generic)
+	   (protocol-includes-method-pun protocol)
+	   ;;base-method implies eponymous
+	   (not (null (getf properties :base-method)))))
+      
+      ;; the actual codegen
+      `(eval-when (:compile-toplevel :load-toplevel :execute)
+	 ,(protocol-definition name methods properties)))))
+
+
 
 (defmacro extend-type (class &body methods)
   `(progn

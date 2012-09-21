@@ -111,6 +111,8 @@
 			(abc o)
 			(def o))))
 
+(assert (not (fboundp 'baz)))
+
 
 (defprotocol base-method-test
   (:base-method (o) (list 'ok o))
@@ -124,4 +126,51 @@
 (assert (equalp (base-method-test 'ok)
 		'(ok ok)))
 (assert (equalp (base-method-test "hello")
+		'(ok "hello")))
+
+
+(defprotocol eponymous-method-test
+  (:eponymous-method t)
+  (:base-method (o) (list 'ok o))
+  (dummy2 (x)))
+
+
+(extend-type string
+  eponymous-method-test
+  (dummy2 (x) x))
+
+
+(assert (equalp (eponymous-method-test 'ok)
+		'(ok ok)))
+(assert (equalp (eponymous-method-test "hello")
 		"hello"))
+
+
+(defmacro on-error-return (form &body body)
+  "return form if any errors occur in body"
+  `(catch 'error-return
+     (handler-bind ((error #'(lambda (condition)
+			       (declare (ignore condition))
+			       (throw 'error-return ,form))))
+       (progn ,@body))))
+
+(assert (eq :expected
+	    (on-error-return :expected
+	      (error "dead"))))
+
+
+(defprotocol eponymous-generic-test
+  (:eponymous-generic t)
+  (dummy3 (x)))
+
+
+(extend-type string
+  eponymous-generic-test
+  (dummy3 (x) x))
+
+
+(assert (fboundp 'eponymous-generic-test))
+
+(assert (eq :expected
+	    (on-error-return :expected
+	      (eponymous-generic-test "hello"))))

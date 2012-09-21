@@ -16,12 +16,39 @@ system.
    where name is a symbol
          docstring a docstring
          option is one of:
-	   (:base-method ...)
 	   (:require protocol)
+	   (:base-method ...)
+	   (:eponymous-method t | nil)
+	   (:eponymous-generic t | nil)
 	 method-declaration is
 	   a simple lambda list with
 	   an optional docstring (see below)
-
+   
+   of the options, :require is the most straightforward.
+   the others are a little funky, but have come in handy
+   for me in practice.
+   options:
+     - :require other-protocol
+       this option will check at compile time
+       that any object implementing this protocol
+       already implements other-protocol
+     - :eponymous-generic bool
+       when true, defprotocol will generate a generic
+       function of one argument with the same name as
+       the protocol. default is nil.
+     - :eponymous-method bool
+       when true, extend-type will generate a method
+       with the same name as the protocol specializing
+       on the implementing type. the method generated
+       functions as identity. this is just a convenience
+       option. useage implies (:eponymous-generic t)
+       defaults to nil.
+     - :base-method ((param) body)
+       when supplied, generates an unspecialized method
+       with the same name as the protocol, with the form
+       (:method (param) body). implies (:eponymous-generic t)
+       defaults to nil.
+       
    example:
    (defprotocol printable
      "an object which can be printed my way"

@@ -51,6 +51,15 @@
   properties ;;plist
   methods )
 
+(defun validate-defprotocol-option (list)
+  (and (member (first list) '(:eponymous-method
+			      :eponymous-generic
+			      :require
+			      :base-method)))
+  ;;TODO: validate option bodies
+  t
+  )
+
 (defun parse-protocol-body (methods)
   (let ((body (make-protocol-body
 	       :properties (list)
@@ -59,8 +68,10 @@
        for list in methods
        for thing = (first list)
        do (if (keywordp thing)
-	      (setf (getf (protocol-body-properties body) thing)
+	      (if (validate-defprotocol-option list)
+		  (setf (getf (protocol-body-properties body) thing)
 		    (rest list))
+		  (error "invalid option in defprotocol: ~S" list))
 	      (push list (protocol-body-methods body))))
     body))
 
@@ -248,8 +259,7 @@
       (setf
        ;;wether to generate punning methods
        (protocol-includes-method-pun protocol)
-       (or (getf properties :eponymous-method)
-       )
+       (getf properties :eponymous-method)
 
        ;; including methods implies including
        ;; a generic

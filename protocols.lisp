@@ -214,6 +214,7 @@
        (:documentation ,base-doc)
        ,@(when base-method
 	       (list `(:method ,@base-method))))))
+(defun %bool (o) (not (null o)))
 
 (defun protocol-definition (name methods properties)
   (let ((protocol (ensure-protocol name)))
@@ -225,7 +226,11 @@
 		 (list (protocol-definition-eponymous-generic name properties)))
 	 ,@(protocol-definition-defgeneric-forms name methods properties)
 	 ,(protocol-test-function name)
-	 ,(protocol-deftype name)))))
+	 ,(protocol-deftype name)
+	 (setf (protocol-includes-generic-pun ,p)
+	       ,(%bool (protocol-includes-generic-pun protocol))
+	       (protocol-includes-method-pun ,p)
+	       ,(%bool (protocol-includes-method-pun protocol)))))))
 
 
 
@@ -276,13 +281,14 @@
 
 
 (defmacro extend-type (class &body methods)
-  `(progn
-     ,@(mapcar
-	(lambda (list)
-	  (protocol-implementation (first list)
-				   class
-				   (rest list)))
-	(partition-methods methods))))
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (progn
+       ,@(mapcar
+	  (lambda (list)
+	    (protocol-implementation (first list)
+				     class
+				     (rest list)))
+	  (partition-methods methods)))))
 
 (defun class-implements-protocol-p (class protocol)
   (implements-protocol? (find-class class)

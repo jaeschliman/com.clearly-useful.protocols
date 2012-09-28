@@ -8,7 +8,8 @@
    (properties :accessor properties :initform nil)
    (documentation :accessor protocol-documentation :initform nil)
    (includes-generic-pun :accessor protocol-includes-generic-pun :initform nil)
-   (includes-method-pun :accessor protocol-includes-method-pun :initform nil)))
+   (includes-method-pun :accessor protocol-includes-method-pun :initform nil)
+   (implementors :initform (list))))
 
 (defmethod make-load-form ((p protocol) &optional env)
   (declare (ignore env))
@@ -151,6 +152,10 @@
 
 
 ;;implementation code gen
+(defun %implements? (typename protocolname)
+  (or (class-implements-protocol-p typename protocolname)
+      (loop for i in (slot-value (find-protocol protocolname) 'implementors)
+	   thereis (subtypep typename i))))
 
 (defun generate-implements? (class protocol)
   `((defmethod implements-protocol? ((object ,class)
@@ -165,7 +170,7 @@
   (when requires
     (list
      `(dolist (required ',requires)
-	(unless (class-implements-protocol-p ',class required)
+	(unless (%implements? ',class required)
 	  (error "for class ~S: protocol ~S requires protocol ~S be implemented"
 		 ',class ',name required))))))
 
@@ -174,6 +179,7 @@
 	 (requires (getf (properties protocol) :require)))
     `(progn
        ,@(generate-implements? class protocol)
+       (pushnew ',class (slot-value (ensure-protocol ',name) 'implementors))
        ,@(generate-requires requires class name))))
 
 (defun transform-method (method type)

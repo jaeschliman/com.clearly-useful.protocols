@@ -174,3 +174,34 @@
 (assert (eq :expected
 	    (on-error-return :expected
 	      (eponymous-generic-test "hello"))))
+
+
+;;;;;;;;; subtypes should be able
+;;;;;;;;; to inherited protocol implementations
+;;;;;;;;; for use with require.
+
+
+(defprotocol inherit-requires-test
+  (ihtm (x)))
+
+(defprotocol inherit-requires-test2
+  (:require inherit-requires-test)
+  (iht2m (c)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defstruct iht-class xx))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defstruct (iht2-class (:include iht-class))))
+
+
+(extend-type iht-class
+  inherit-requires-test
+  (ihtm (x) x))
+
+(assert (typep (make-iht-class) 'inherit-requires-test))
+(assert (typep (make-iht2-class) 'inherit-requires-test))
+
+(extend-type iht2-class
+  inherit-requires-test2
+  (iht2m (x) x))

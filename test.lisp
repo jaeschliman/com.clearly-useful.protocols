@@ -205,3 +205,19 @@
 (extend-type iht2-class
   inherit-requires-test2
   (iht2m (x) x))
+
+;;;;; should be over the eval-when issues.
+
+(defstruct okay-now foo)
+(defprotocol okay-now?
+  (okay-now (x)))
+(extend-type okay-now
+  okay-now?
+  (okay-now (x) x))
+
+
+;;;;; TODO: compiling a file containing
+;; a protocol should not actually create
+;;  protocol, just the compile-time
+;; validator. make sure this is in line
+;; with deftype etc.

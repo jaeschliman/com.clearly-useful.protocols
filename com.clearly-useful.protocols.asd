@@ -11,5 +11,11 @@
   :license "revised BSD"
   :depends-on (:iterate)
   :components ((:file "package")
+	       (:file "compile-time")
+	       (:file "load-time")
+	       (:file "validation")
+	       (:file "parse")
+	       (:file "codegen")
+	       (:file "interface")
                (:file "protocols")))
 

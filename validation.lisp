@@ -20,29 +20,32 @@
        (not (member '&allow-other-keys params))))
 
 (defmacro all (&body body)
+  "(all x1 y1 x2 y2 ...) -> (and (or x1 y1) (or x2 y2) ...)"
   (let ((pairs (loop for (test error) on body by #'cddr collect
 		    `(or ,test ,error))))
     (cons 'and pairs)))
 
 (defun validate-protocol-implementation-methods (protocol type methods)
-  (let ((method-definitions (methods protocol)))
+  (let ((method-definitions (methods protocol))
+	(protocol-name (name protocol)))
     (dolist (method methods)
       (let* ((name (first method))
 	     (params (second method))
 	     (def (find name method-definitions :key #'first)))
-	(unless (all def
-		     (error "undefined method ~A" name)
-		     (valid-protocol-method-name-p name)
-		     (error "invalid protocol method name ~A" name)
-		     (valid-protocol-lambda-list-p params)
-		     (error "invalid protocol method lambda list ~A ~A"
-			    name params)
-		     (= (length (second def))
-			(length params))
-		     (error "parameters for method ~A don't match protocol: ~A ~A"
-			    params (second def)))
-	  (error "invalid method ~A for ~A implementation of protocol ~A"
-		 method type (name protocol)))))))
+
+	(all def
+	     (error "undefined method ~A for protocol ~A in implementation for ~A"
+		    name protocol-name type)
+	     (valid-protocol-method-name-p name)
+	     (error "invalid protocol method name ~A in implementation of ~A for ~A"
+		    name protocol-name type)
+	     (valid-protocol-lambda-list-p params)
+	     (error "invalid protocol method lambda list ~A ~A in implementation of ~A for ~A"
+		    name params protocol-name type)
+	     (= (length (second def))
+		(length params))
+	     (error "parameters for method ~A don't match protocol: ~A ~A"
+		    name  params (second def)))))))
 
 (defun validate-protocol-definition-methods (name methods)
   (flet ((ok (method) (let ((name (first method))

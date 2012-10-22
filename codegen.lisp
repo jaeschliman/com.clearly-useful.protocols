@@ -11,7 +11,7 @@
 (defun protocol-test-function (name)
   `(defun ,(protocol-test-name name) (object)
      ,(format nil "test if object implements ~S" name)
-     (implements-protocol? object ,(ensure-protocol name))))
+     (implements-protocol? object (ensure-protocol ',name))))
 
 (defun protocol-deftype (name documentation)
   `(deftype ,name () ,documentation
@@ -25,7 +25,9 @@
 	   thereis (subtypep typename i))))
 
 (defun %compile-time-implements? (typename protocolname)
-  (or (%implements? typename protocolname)
+  (and 
+      (or (%find-protocol-compilation-note protocolname)
+	  (error "missing %protocol-compilation-note: ~S " protocolname))
       (loop for i in (slot-value (%find-protocol-compilation-note protocolname) 'implementors)
 	   thereis (subtypep typename i))))
 
@@ -63,10 +65,14 @@
        ,@(generate-requires requires class name))))
 
 (defun transform-method (method type)
-  (list* 'defmethod
-	 (car method)
-	 (cons (list (caadr method) type) (cdadr method))
-	 (cddr method)))
+  (let ((r
+	 `(progn
+	    ,(list* 'defmethod
+		    (car method)
+		    (cons (list (caadr method) type) (cdadr method))
+		    (cddr method)))))
+
+    r))
 
 ;;xx
 
@@ -109,6 +115,7 @@
     (let ((p (gensym)))
       `(progn
 	 (eval-when (:compile-toplevel :load-toplevel :execute)
+	   (%build-protocol-object (%ensure-protocol-compilation-note ',name) ',unparsed-body)
 	   ,(protocol-test-function name)
 	   ,(protocol-deftype name (protocol-documentation protocol))
 	   ,@(protocol-definition-defgeneric-forms name methods properties)
@@ -131,8 +138,9 @@
   (let* ((requires (getf (properties protocol) :require))
 	 (name (name protocol)))
     `(progn
-       (pushnew ',type (slot-value
-			(%ensure-protocol-compilation-note ',name) 'implementors))
+       (pushnew
+	',type
+	(slot-value (%ensure-protocol-compilation-note ',name) 'implementors))
        ,@(generate-compile-time-requires requires type name))))
 
 (defun protocol-implementation (protocol type methods)
@@ -143,10 +151,12 @@
        (eval-when (:compile-toplevel)
 	 
 	 ,(protocol-implementation-compile-time protocol type methods)
-	 (validate-protocol-implementation-methods ,protocol ',type ',methods)
+	 (validate-protocol-implementation-methods
+	  (%ensure-protocol-compilation-note ',(name protocol))
+	  ',type ',methods)
 	 
 	 )
-       ,@(method-implementations name type methods)
+       ,@(method-implementations name protocol type methods)
        ,@(when (protocol-includes-method-pun protocol)
 	       (list (protocol-implementation-base-method protocol type)))
        ,(protocol-implementation-register protocol type))))
@@ -187,45 +197,21 @@
       )))
 
 
-;; (defun %defprotocol (name methods)
-;;   (let ((protocol (ensure-protocol name)))
-;;     (%build-protocol-object protocol methods)
-;;     (let* ((methods (methods protocol)
-;; 	     )
-;; 	  (properties (properties protocol)))
-;;       ;; the actual codegen
-;;       `(eval-when (:compile-toplevel :load-toplevel :execute)
-;; 	 ,(protocol-definition name methods properties)))))
 
 (defun %defprotocol (name body)
-
-  (let ((protocol (%ensure-protocol-compilation-note name)))
-    ;;compile time effects
+  (let ((protocol (make-instance '%protocol-compilation-note :name name)))
     (%build-protocol-object protocol body)
     `(progn
-	 ,(protocol-definition protocol body))
-    
-    ))
+	 ,(protocol-definition protocol body))))
 
-;; (defun %extend-type (class methods)
-  
-;;   `(eval-when (:compile-toplevel :load-toplevel :execute)
-;;      (progn
-;;        ,@(mapcar
-;; 	  (lambda (list)
-;; 	    (protocol-implementation (ensure-protocol (first list))
-;; 				     class
-;; 				     (rest list)))
-;; 	  (partition-methods methods)))))
 
 (defun %extend-type (class methods)
   `(progn
        ,@(mapcar
 	  (lambda (list)
-	    
 	    (protocol-implementation
-	     ;;this should work with compilation note, not actual.
-	     (%ensure-protocol-compilation-note (first list))
+	     (or (%find-protocol-compilation-note (first list))
+		 (error "no known protocol ~A" (first list)))
 	     class
 	     (rest list)))
 	  (partition-methods methods))))

@@ -21,7 +21,7 @@
 
 ;;;; validation
 
-(defun method-implementations (name type methods)
+(defun method-implementations (name protocol type methods)
     (flet ((order (method-list)
 	   (sort (copy-seq method-list) #'string< :key #'first))
 	 (equivalent (a b)
@@ -29,7 +29,7 @@
 		(= (length (second a))
 		   (length (second b))))))
     (let ((new (order methods))
-	  (def (order (methods (find-protocol name)))))
+	  (def (order (methods protocol))))
      (loop for a in new for b in def
 	  collect (transform-method a type)
 	  when (not (equivalent a b))

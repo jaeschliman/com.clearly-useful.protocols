@@ -1,3 +1,7 @@
+#|
+(delete-package :com.clearly-useful.protocols.test)
+|#
+
 (defpackage :com.clearly-useful.protocols.test
   (:use :cl :com.clearly-useful.protocols))
 
@@ -208,12 +212,25 @@
 
 ;;;;; should be over the eval-when issues.
 
-(defstruct okay-now foo)
+
+
+
+
+(defstruct still-okay foo)
+
 (defprotocol okay-now?
   (okay-now (x)))
-(extend-type okay-now
+
+(extend-type still-okay
   okay-now?
-  (okay-now (x) x))
+  (okay-now (x) '(yes still okay)))
+
+  
+  
+(let ((ok2 (make-still-okay :foo :bar)))
+  (okay-now ok2))
+
+
 
 
 ;;;;; TODO: compiling a file containing

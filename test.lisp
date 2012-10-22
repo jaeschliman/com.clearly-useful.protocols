@@ -1,7 +1,3 @@
-#|
-(delete-package :com.clearly-useful.protocols.test)
-|#
-
 (defpackage :com.clearly-useful.protocols.test
   (:use :cl :com.clearly-useful.protocols))
 
@@ -23,6 +19,7 @@
 
 ;; a simple protocol with documentation and multiple
 ;; methods.
+
 (defprotocol greeter
   "A Way to Say Hello"
   (hi (object) "Greet object to stdout")
@@ -209,10 +206,6 @@
 
 ;;;;; should be over the eval-when issues.
 
-
-
-
-
 (defstruct still-okay foo)
 
 (defprotocol okay-now?
@@ -221,11 +214,11 @@
 (extend-type still-okay
   okay-now?
   (okay-now (x) '(yes still okay)))
-
-  
+ 
   
 (let ((ok2 (make-still-okay :foo :bar)))
-  (okay-now ok2))
+  (assert (equalp (okay-now ok2)
+		  '(yes still okay))))
 
 
 

@@ -28,8 +28,11 @@
   (and 
       (or (%find-protocol-compilation-note protocolname)
 	  (error "missing %protocol-compilation-note: ~S " protocolname))
-      (loop for i in (slot-value (%find-protocol-compilation-note protocolname) 'implementors)
-	   thereis (subtypep typename i))))
+      (or (loop for i in (slot-value (%find-protocol-compilation-note protocolname) 'implementors)
+	   thereis (subtypep typename i))
+	  (and (format *error-output* "~A was not found to be a subtype of an of ~S~%"
+		       typename (slot-value (%find-protocol-compilation-note protocolname) 'implementors))
+	       nil))))
 
 (defun generate-implements? (class name)
   `((defmethod implements-protocol? ((object ,class)
@@ -44,7 +47,8 @@
   (when requires
     (list
      `(dolist (required ',requires)
-	(unless (%implements? ',class required)
+	(unless (or (%implements? ',class required)
+		    (%compile-time-implements? ',class required))
 	  (error "for class ~S: protocol ~S requires protocol ~S be implemented"
 		 ',class ',name required))))))
 
@@ -53,7 +57,7 @@
     (list
      `(dolist (required ',requires)
 	(unless (%compile-time-implements? ',class required)
-	  (error "for class ~S: protocol ~S requires protocol ~S be implemented"
+	  (error "(Compile) for class ~S: protocol ~S requires protocol ~S be implemented"
 		 ',class ',name required))))))
 
 (defun protocol-implementation-register (protocol class)
@@ -137,11 +141,18 @@
   (declare (ignore methods))
   (let* ((requires (getf (properties protocol) :require))
 	 (name (name protocol)))
-    `(progn
-       (pushnew
+    `((pushnew
 	',type
 	(slot-value (%ensure-protocol-compilation-note ',name) 'implementors))
-       ,@(generate-compile-time-requires requires type name))))
+
+      ;;; can't reliable check :requires at compile time,
+      ;;; as the needed type information may not be present.
+      ;;; checked at load/eval.
+      ;(format *error-output* "implementors of ~A: ~S~%" ',name (slot-value (%ensure-protocol-compilation-note ',name) 'implementors))
+      ; ,@(generate-compile-time-requires requires type name)
+
+
+      )))
 
 (defun protocol-implementation (protocol type methods)
   "protocol, implementation type name, method list"
@@ -149,8 +160,8 @@
   (let ((name (name protocol)))
     `(progn
        (eval-when (:compile-toplevel)
-	 
-	 ,(protocol-implementation-compile-time protocol type methods)
+	 ;(format *error-output* "compile time eval for ~A on ~A~%" ',name ',type)
+	 ,@(protocol-implementation-compile-time protocol type methods)
 	 (validate-protocol-implementation-methods
 	  (%ensure-protocol-compilation-note ',(name protocol))
 	  ',type ',methods)
@@ -159,6 +170,7 @@
        ,@(method-implementations name protocol type methods)
        ,@(when (protocol-includes-method-pun protocol)
 	       (list (protocol-implementation-base-method protocol type)))
+       ;(format *error-output* "load/exec time eval for ~A on ~A~%" ',name ',type)
        ,(protocol-implementation-register protocol type))))
 
 

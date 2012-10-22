@@ -192,12 +192,9 @@
   (:require inherit-requires-test)
   (iht2m (c)))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defstruct iht-class xx))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defstruct (iht2-class (:include iht-class))))
-
+(defstruct iht-class xx)
+(defstruct (iht2-class (:include iht-class)))
 
 (extend-type iht-class
   inherit-requires-test

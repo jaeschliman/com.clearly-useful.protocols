@@ -228,3 +228,13 @@
 ;;  protocol, just the compile-time
 ;; validator. make sure this is in line
 ;; with deftype etc.
+
+
+;;;; confirm that ignored parameters work ok.
+
+(defprotocol multi-param
+  (use-these (self a b c d)))
+
+(extend-type string
+  multi-param
+  (use-these (_ _ _ _ d) `(just ,d)))

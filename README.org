@@ -102,10 +102,21 @@ system.
      
    this will result in method definitions for the generic functions
    bar and svelte specialized on class string for the first parameter.
-   lambda-lists for method-definitions in extend-type may only contain
-   symbols, and do not support &optional &key &allow-other key. this
+
+   lambda-lists for method implementations in extend-type may only contain
+   symbols, and do not support &optional &key &allow-other-keys. this
    is a limitation of the current implementation that may change in
-   the future.
+   the future. they do, however allow the use of the special symbol _
+   to indicate ignored parameters. the symbol _ may be used multiple
+   times in an implementation, e.g.
+
+   (extend-type frobnicator
+     music:instrument
+     (music:play-with-orchestra (_ _ _)
+        ;;frobnicators only know one note.
+        (music:play-note :b-flat 1.0)))
+
+
 
 ** protocol-extends-class-p
    /function/
@@ -130,6 +141,6 @@ system.
 
 *** TODO add extend-protocol
 
-*** TODO add ability to extend objects as well as types 
+*** TODO [#A] add ability to extend objects as well as types 
 *** DONE error messages are less helpful than they could be at the moment. 
 *** TODO migrate to a proper test framework 

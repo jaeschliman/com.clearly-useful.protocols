@@ -68,17 +68,29 @@
        (pushnew ',class (slot-value (ensure-protocol ',name) 'implementors))
        ,@(generate-requires requires class name))))
 
-(defun transform-method (method type)
-  (let ((r
-	 `(progn
-	    ,(list* 'defmethod
-		    (car method)
-		    (cons (list (caadr method) type) (cdadr method))
-		    (cddr method)))))
+(defun transform-arglist (arglist type)
+  (let* ((gensyms nil)
+         (syms (list (list (car (if (string= (car arglist) '_)
+                              (push (gensym "_") gensyms)
+                              arglist))
+                           type))))
+    (dolist (s (cdr arglist))
+      (if (string= s '_)
+          (push (car (push (gensym "_") gensyms)) syms)
+          (push s syms)))
+    (values (nreverse syms)
+            (when gensyms
+              `(declare (ignore ,@gensyms))))))
 
-    r))
 
-;;xx
+(defun transform-method (spec type)
+  (destructuring-bind (name arglist &rest body) spec
+    (multiple-value-bind (args ignores) (transform-arglist arglist type)
+      `(progn ,(list* 'defmethod name
+                     args
+                     (if ignores
+                         (cons ignores body)
+                         body))))))
 
 
 (defun transform-method-to-defgeneric (protocol-name method)

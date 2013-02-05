@@ -3,13 +3,12 @@
 (asdf:defsystem #:com.clearly-useful.protocols
   :serial t
   :description "Simple protocol implementation for Common Lisp inspired by clojure."
-
   :author "Jason Aeschliman <j.aeschliman@gmail.com>"
-
-  :version "0.1"
-  
+  :version "0.1.2"
   :license "revised BSD"
-  :depends-on (:iterate)
+
+  :depends-on (#:iterate)
+  
   :components ((:file "package")
 	       (:file "compile-time")
 	       (:file "load-time")

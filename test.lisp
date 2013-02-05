@@ -238,3 +238,19 @@
 (extend-type string
   multi-param
   (use-these (_ _ _ _ d) `(just ,d)))
+
+
+;;;; test reify & extend-object
+
+(defprotocol whatever
+  (|is it you?| (a)))
+
+(defvar *snowflake* (cons nil nil))
+
+(extend-object *snowflake*
+  whatever
+  (|is it you?| (_) t))
+
+(assert (typep *snowflake* 'whatever))
+(assert (null (typep (cons nil nil) 'whatever)))
+(assert (|is it you?| *snowflake*))

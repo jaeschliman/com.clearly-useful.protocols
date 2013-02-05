@@ -21,7 +21,7 @@
 
 ;;;; validation
 
-(defun method-implementations (name protocol type methods)
+(defun method-implementations (name protocol specializer methods)
     (flet ((order (method-list)
 	   (sort (copy-seq method-list) #'string< :key #'first))
 	 (equivalent (a b)
@@ -31,12 +31,27 @@
     (let ((new (order methods))
 	  (def (order (methods protocol))))
      (loop for a in new for b in def
-	  collect (transform-method a type)
+	  collect (transform-method a specializer)
 	  when (not (equivalent a b))
 	  do (error
 	      "implementation ~A does not match ~A for type ~A in ~A"
-	      a b type name)))))
+	      a b specializer name)))))
 
+
+;;;;; reify
+
+(defclass %reified% () ())
+
+(defun %implement-protocol-for-object (obj methods)
+  `(progn
+       ,@(mapcar
+	  (lambda (list)
+	    (protocol-implementation
+	     (or (%find-protocol-compilation-note (first list))
+		 (error "no known protocol ~A" (first list)))
+	     obj
+	     (rest list)))
+	  (partition-methods methods))))
 
 
 
@@ -60,8 +75,17 @@
   (class-implements-protocol-p class protocol))
 
 
+(defmacro reify (&body methods)
+  (let ((g (gensym)))
+    `(let ((,g (make-instance '%reified%)))
+       ,(%implement-protocol-for-object `(eql ,g) methods)
+       ,g)))
 
-
+(defmacro extend-object (object &body methods)
+  (let ((g (gensym)))
+    `(let ((,g ,object))
+       ,(%implement-protocol-for-object `(eql ,g) methods)
+       ,g)))
 
 
 

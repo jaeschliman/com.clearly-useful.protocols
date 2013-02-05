@@ -34,14 +34,15 @@
 		       typename (slot-value (%find-protocol-compilation-note protocolname) 'implementors))
 	       nil))))
 
-(defun generate-implements? (class name)
-  `((defmethod implements-protocol? ((object ,class)
+(defun generate-implements? (specializer name)
+  `((defmethod implements-protocol? ((object ,specializer)
 				     (protocol (eql (ensure-protocol ',name))))
       (declare (ignorable object)
-	       (ignorable protocol))	 t)
-    (defmethod implements-protocol? ((object (eql (find-class ',class)))
-				     (protocol (eql (ensure-protocol ',name))))
-      (declare (ignorable object protocol)) 	 t)))
+	       (ignorable protocol)) t)
+    ,@(when (symbolp specializer)
+            `((defmethod implements-protocol? ((object (eql (find-class ',specializer)))
+                                              (protocol (eql (ensure-protocol ',name))))
+                (declare (ignorable object protocol)) t)))))
 
 (defun generate-requires (requires class name)
   (when requires
@@ -54,26 +55,30 @@
 
 (defun generate-compile-time-requires (requires class name)
   (when requires
-    (list
-     `(dolist (required ',requires)
-	(unless (%compile-time-implements? ',class required)
-	  (error "(Compile) for class ~S: protocol ~S requires protocol ~S be implemented"
-		 ',class ',name required))))))
+    (if (symbolp class)
+        (list
+         `(dolist (required ',requires)
+            (unless (%compile-time-implements? ',class required)
+              (error "(Compile) for class ~S: protocol ~S requires protocol ~S be implemented"
+                     ',class ',name required))))
+        (warn "protocol requires currently unimplemented for eql specializers"))))
 
-(defun protocol-implementation-register (protocol class)
+(defun protocol-implementation-register (protocol specializer)
   (let* ((name (name protocol))
 	 (requires (getf (properties protocol) :require)))
     `(progn
-       ,@(generate-implements? class name)
-       (pushnew ',class (slot-value (ensure-protocol ',name) 'implementors))
-       ,@(generate-requires requires class name))))
+       ,@(generate-implements? specializer name)
+       ,@(when (symbolp specializer)
+               `((pushnew ',specializer
+                          (slot-value (ensure-protocol ',name) 'implementors))))
+       ,@(generate-requires requires specializer name))))
 
-(defun transform-arglist (arglist type)
+(defun transform-arglist (arglist specializer)
   (let* ((gensyms nil)
          (syms (list (list (car (if (string= (car arglist) '_)
-                              (push (gensym "_") gensyms)
-                              arglist))
-                           type))))
+                                    (push (gensym "_") gensyms)
+                                    arglist))
+                           specializer))))
     (dolist (s (cdr arglist))
       (if (string= s '_)
           (push (car (push (gensym "_") gensyms)) syms)
@@ -83,9 +88,9 @@
               `(declare (ignore ,@gensyms))))))
 
 
-(defun transform-method (spec type)
+(defun transform-method (spec specializer)
   (destructuring-bind (name arglist &rest body) spec
-    (multiple-value-bind (args ignores) (transform-arglist arglist type)
+    (multiple-value-bind (args ignores) (transform-arglist arglist specializer)
       `(progn ,(list* 'defmethod name
                      args
                      (if ignores
@@ -151,39 +156,30 @@
 
 (defun protocol-implementation-compile-time (protocol type methods)
   (declare (ignore methods))
-  (let* ((requires (getf (properties protocol) :require))
-	 (name (name protocol)))
-    `((pushnew
-	',type
-	(slot-value (%ensure-protocol-compilation-note ',name) 'implementors))
+  (when (symbolp type)
+    (let* ((name (name protocol)))
+      `((pushnew
+         ',type
+         (slot-value (%ensure-protocol-compilation-note ',name) 'implementors))))))
 
-      ;;; can't reliable check :requires at compile time,
-      ;;; as the needed type information may not be present.
-      ;;; checked at load/eval.
-      ;(format *error-output* "implementors of ~A: ~S~%" ',name (slot-value (%ensure-protocol-compilation-note ',name) 'implementors))
-      ; ,@(generate-compile-time-requires requires type name)
-
-
-      )))
-
-(defun protocol-implementation (protocol type methods)
+(defun protocol-implementation (protocol thing methods)
   "protocol, implementation type name, method list"
   
   (let ((name (name protocol)))
     `(progn
        (eval-when (:compile-toplevel)
 	 ;(format *error-output* "compile time eval for ~A on ~A~%" ',name ',type)
-	 ,@(protocol-implementation-compile-time protocol type methods)
+	 ,@(protocol-implementation-compile-time protocol thing methods)
 	 (validate-protocol-implementation-methods
 	  (%ensure-protocol-compilation-note ',(name protocol))
-	  ',type ',methods)
+	  ',thing ',methods)
 	 
 	 )
-       ,@(method-implementations name protocol type methods)
+       ,@(method-implementations name protocol thing methods)
        ,@(when (protocol-includes-method-pun protocol)
-	       (list (protocol-implementation-base-method protocol type)))
+	       (list (protocol-implementation-base-method protocol thing)))
        ;(format *error-output* "load/exec time eval for ~A on ~A~%" ',name ',type)
-       ,(protocol-implementation-register protocol type))))
+       ,(protocol-implementation-register protocol thing))))
 
 
 
